@@ -1,0 +1,14 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { leaderboard, winners, monthBars } from '../lib/stats';
+import { playSchema } from '../lib/validation';
+import type { Data, Game, Play } from '../lib/types';
+const game:Game={id:'g',name:'test',english:'Test',minPlayers:1,maxPlayers:4,minutes:30,color:'#ffffff',motif:'hex',scoring:'high'};
+const play:Play={id:'s',gameId:'g',date:'2026-10-01',duration:60,scores:[{playerId:'a',score:8},{playerId:'b',score:8},{playerId:'c',score:2}],note:'',version:1};
+const data:Data={games:[game],players:['a','b','c'].map(id=>({id,name:id,color:'#ffffff'})),plays:[play]};
+test('ties award a win to each tied player',()=>{assert.deepEqual(winners(play,game),['a','b']);assert.equal(leaderboard(data)[0].rate,100);});
+test('low scores win in low-score games',()=>{assert.deepEqual(winners(play,{...game,scoring:'low'}),['c']);const rows=leaderboard({...data,games:[{...game,scoring:'low'}]},'g');assert.equal(rows[0].id,'c');assert.equal(rows[0].best,2);});
+test('overall wins do not compare scores across games',()=>{const second:Play={...play,id:'s2',gameId:'g2',scores:[{playerId:'a',score:1},{playerId:'b',score:0}]};const rows=leaderboard({...data,games:[game,{...game,id:'g2'}],plays:[play,second]});assert.equal(rows[0].id,'a');assert.equal(rows[0].wins,2);assert.equal(rows[1].rate,50);});
+test('month buckets cross the year boundary',()=>{const bars=monthBars([{...play,date:'2025-12-20'}],new Date(2026,1,15));assert.equal(bars.length,6);assert.equal(bars.find(b=>b.label==='12월')?.count,1);assert.equal(bars[5].label,'2월');});
+test('invalid dates, duplicate players and nonfinite scores are rejected',()=>{assert.equal(playSchema.safeParse({...play,date:'2026-02-30'}).success,false);assert.equal(playSchema.safeParse({...play,scores:[play.scores[0],play.scores[0]]}).success,false);assert.equal(playSchema.safeParse({...play,scores:[{playerId:'a',score:Infinity}]}).success,false);assert.equal(playSchema.safeParse({...play,scores:[]}).success,false);});
+test('zero and negative scores are valid',()=>{assert.equal(playSchema.safeParse({...play,scores:[{playerId:'a',score:0},{playerId:'b',score:-5}]}).success,true);});

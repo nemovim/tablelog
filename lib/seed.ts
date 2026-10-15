@@ -1,6 +1,9 @@
-import type { Data, Game } from './types';
+import type { Data, Game, Play } from './types';
 import { localDate } from './stats';
 export const catalog: Game[] = [
+ {id:'g-mars',name:'테라포밍 마스',english:'Terraforming Mars',bggId:167791,color:'#eed9ce',motif:'planet',scoring:'high'},
+ {id:'g-dominion',name:'도미니언',english:'Dominion',bggId:36218,color:'#e9e1c9',motif:'crown',scoring:'high'},
+ {id:'g-jaws',name:'글룸헤이븐: 사자의 턱',english:'Gloomhaven: Jaws of the Lion',bggId:291457,color:'#dfe2e9',motif:'sword',scoring:'coop'},
  {id:'g-wingspan',name:'윙스팬',english:'Wingspan',bggId:266192,minPlayers:1,maxPlayers:5,minutes:70,color:'#d8e5db',motif:'bird',scoring:'high'},
  {id:'g-azul',name:'아줄',english:'Azul',bggId:230802,minPlayers:2,maxPlayers:4,minutes:40,color:'#dbe7ef',motif:'tile',scoring:'high'},
  {id:'g-splendor',name:'스플렌더',english:'Splendor',bggId:148228,minPlayers:2,maxPlayers:4,minutes:30,color:'#e9e0f2',motif:'gem',scoring:'high'},
@@ -10,6 +13,11 @@ export const catalog: Game[] = [
 ];
 export function demoData(): Data {
  const players = [{id:'p1',name:'지민',color:'#dce7d9'},{id:'p2',name:'수현',color:'#e7dcf3'},{id:'p3',name:'민준',color:'#fae3ce'},{id:'p4',name:'서연',color:'#dbeaf5'}];
- const plays = Array.from({length:32},(_,i) => { const game = catalog[i%6]; const d = new Date(); d.setDate(d.getDate()-Math.floor(i*2.8)); return { id:`demo-${i}`,gameId:game.id,date:localDate(d),duration:game.minutes+(i%3)*5,scores:players.slice(0,i%4===0?3:4).map((p,j) => ({playerId:p.id,score:game.id==='g-splendor'||game.id==='g-catan'? 7+(i*3+j*7)%12: 42+(i*13+j*17)%61})),note:i===0?'새 확장으로 첫 플레이! 마지막 라운드까지 치열했던 한 판.':i===1?'주말 보드게임 모임 ☕':'',version:1}; });
- return {games:catalog,players,plays};
+ const plays:Play[] = Array.from({length:18},(_,i) => {
+  const game=catalog[i%3],d=new Date();d.setDate(d.getDate()-i*3);
+  const base={id:`demo-v2-${i}`,gameId:game.id,date:localDate(d),duration:i===17?undefined:game.scoring==='coop'?90+(i%4)*15:game.id==='g-mars'?120+(i%4)*15:30+(i%4)*5,version:1};
+  if(game.scoring==='coop')return {...base,scores:players.slice(0,3).map(p=>({playerId:p.id})),scenario:String(Math.max(1,6-Math.floor(i/3))),outcome:i===5?'failed':i===2?'paused':'cleared'};
+  return {...base,scores:players.slice(0,i%4===0?3:4).map((p,j)=>({playerId:p.id,score:game.id==='g-mars'?65+(i*7+j*13)%50:20+(i*3+j*7)%35}))};
+ });
+ return {games:catalog.slice(0,3),players,plays};
 }

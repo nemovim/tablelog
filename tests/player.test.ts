@@ -1,0 +1,12 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { playerStats } from '../lib/stats';
+import type { Data, Game, Play } from '../lib/types';
+const competitive:Game={id:'g1',name:'A',english:'A',scoring:'high',motif:'hex',color:'#ffffff'};
+const coop:Game={...competitive,id:'g2',name:'B',scoring:'coop'};
+const play:Play={id:'s1',gameId:'g1',date:'2026-10-01',duration:60,scores:[{playerId:'a',score:10},{playerId:'b',score:20}],version:1};
+const data:Data={games:[competitive,coop],players:['a','b','c'].map(id=>({id,name:id,color:'#ffffff'})),plays:[play,{...play,id:'s2',gameId:'g2',date:'2026-10-02',duration:90,scores:[{playerId:'a'}],scenario:'1',outcome:'cleared'},{...play,id:'s3',date:'2026-10-03',duration:undefined,scores:[{playerId:'a',score:0}]}]};
+test('player totals include only participated sessions and known duration',()=>{const a=playerStats(data,'a')!;assert.equal(a.played,3);assert.equal(a.total,150);assert.equal(a.average,75);assert.equal(a.recorded,2);assert.equal(a.games.length,2);assert.equal(playerStats(data,'b')?.played,1);});
+test('game statistics retain game leaderboard rank and do not mix scores',()=>{const rows=playerStats(data,'a')!.games;assert.equal(rows[0].game.id,'g1');assert.equal(rows[0].score?.best,10);assert.equal(rows[0].score?.average,5);assert.equal(rows[0].score?.rank,2);assert.equal(rows[0].score?.averageRank,1.5);assert.equal(rows[1].score,null);assert.equal(rows[1].total,90);});
+test('recent player records sort by date and include cooperative outcomes',()=>{const stats=playerStats(data,'a')!;assert.deepEqual(stats.plays.map(p=>p.id),['s3','s2','s1']);assert.equal(stats.plays[1].outcome,'cleared');});
+test('registered players without records and unknown IDs are handled',()=>{const c=playerStats(data,'c')!;assert.equal(c.played,0);assert.equal(c.average,null);assert.deepEqual(c.games,[]);assert.equal(playerStats(data,'unknown'),null);});

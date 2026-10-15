@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { gameSchema, playerSchema, playSchema } from '@/lib/validation';
+import { gameSchema, playerSchema, playSchema, validatePlayForGame } from '@/lib/validation';
 export const runtime='nodejs';
 export async function POST(request: NextRequest, {params}:{params:Promise<{collection:string}>}) {
  if(request.headers.get('origin') && request.headers.get('origin')!==request.nextUrl.origin) return NextResponse.json({error:'허용되지 않은 요청입니다.'},{status:403});
@@ -24,6 +24,14 @@ export async function POST(request: NextRequest, {params}:{params:Promise<{colle
    const play=playSchema.parse(record);
    const [game,playerCount]=await Promise.all([database.collection('games').findOne({id:play.gameId}),database.collection('players').countDocuments({id:{$in:play.scores.map(s=>s.playerId)}})]);
    if(!game||playerCount!==play.scores.length) return NextResponse.json({error:'게임이나 플레이어를 찾을 수 없습니다. 새로고침해 주세요.'},{status:400});
+   const gameRule=gameSchema.safeParse(game);
+   if(!gameRule.success) return NextResponse.json({error:'게임 설정을 확인해 주세요.'},{status:400});
+   const validationError=validatePlayForGame(play,gameRule.data);
+   if(validationError) return NextResponse.json({error:validationError},{status:400});
+   if(body.action==='create'&&play.id.startsWith('timer-')) {
+    const timer=await database.collection('timers').findOne({id:play.id,phase:'finished'});
+    if(!timer||timer.gameId!==play.gameId)return NextResponse.json({error:'타이머가 변경되었거나 이미 저장되었습니다. 새로고침해 주세요.'},{status:409});
+   }
    if(body.action==='update') {
     const result=await store.replaceOne({_id:play.id,version:play.version} as never,{...play,_id:play.id,version:play.version+1} as never);
     if(!result.matchedCount) return NextResponse.json({error:'다른 사람이 수정한 기록입니다. 새로고침 후 다시 시도해 주세요.'},{status:409});

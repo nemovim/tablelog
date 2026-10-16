@@ -39,7 +39,7 @@ export async function POST(request:NextRequest) {
    await store.insertOne({...next,_id:'shared'});
    return json({timer:next,now},201);
   }
-  if(!['pause','resume','finish','discard'].includes(body.action))return json({error:'잘못된 작업입니다.'},400);
+  if(!['pause','resume','finish','discard','next'].includes(body.action))return json({error:'잘못된 작업입니다.'},400);
   if(!timer||body.id!==timer.id||body.version!==timer.version)return json({error:'다른 사람이 타이머를 변경했습니다. 최신 상태를 확인해 주세요.'},409);
   const filter={_id:'shared',id:timer.id,version:timer.version};
   if(body.action==='discard') {

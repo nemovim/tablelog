@@ -7,6 +7,7 @@ import { leaderboard, localDate, playerName, placements, timeStats, formatDurati
 import { gameSchema, playSchema, playerSchema, validatePlayForGame } from '@/lib/validation';
 import GameArt from './game-art';
 import PlayerStats from './player-stats';
+import { BoardMobileStats } from './mobile-stats';
 import TimerPanel from './timer-panel';
 import { timerMinutes, type SharedTimer } from '@/lib/timer';
 const empty:Data={games:[],players:[],plays:[]};
@@ -63,6 +64,7 @@ export default function Dashboard() {
      <section className="scoreboard" aria-label={`${game.name} 통계`}>
       <div className="board-heading"><div className="game-title"><div><h2>{game.name}</h2><p>{coop?'협력형 · 판수 및 시간':`${game.scoring==='low'?'낮은':'높은'} 점수순 · 동점은 공동 등수`}</p></div></div><span className="total-plays">총 <strong>{plays.length}</strong>판</span></div>
       <div className="time-summary"><div><span>누적 플레이 시간</span><strong>{timing.recorded?formatDuration(timing.total):'미기록'}</strong></div><div><span>한 판 평균</span><strong>{formatDuration(timing.average)}</strong></div><small>시간 입력 {timing.recorded}/{plays.length}판</small></div>
+      <BoardMobileStats rows={rows} team={team} coop={coop} onPlayer={showPlayer}/>
       {coop?<><p className="mobile-table-hint">옆으로 밀어 전체 통계 보기 <span aria-hidden="true">↔</span></p><div className="table-scroll" tabIndex={0} role="region" aria-label="게임 통계 표"><table className="coop-table"><thead><tr><th>플레이어</th><th>참가 판수</th><th>누적 시간</th><th>평균 시간</th></tr></thead><tbody>{team.map(p=><tr key={p.id}><td><button className="player-cell player-link" aria-label={`${p.name} 통계`} onClick={()=>showPlayer(p.id)}><Avatar player={p}/><strong>{p.name}</strong></button></td><td>{p.played}<span className="unit">판</span></td><td>{p.recorded?formatDuration(p.total):'미기록'}</td><td>{formatDuration(p.average)}</td></tr>)}</tbody></table></div>{!team.length&&<Empty label="플레이 기록이 없습니다." action="플레이 기록" onClick={record}/>}</>:<>      <p className="mobile-table-hint">옆으로 밀어 전체 통계 보기 <span aria-hidden="true">↔</span></p><div className="table-scroll" tabIndex={0} role="region" aria-label="게임 통계 표"><table className="ranking-table"><thead><tr><th>순위</th><th>플레이어</th><th>판수</th><th>최고 점수</th><th>평균 점수</th><th>평균 등수</th><th>등수별 판수</th></tr></thead><tbody>{rows.map(p=><tr key={p.id}><td><span className={`rank ${p.rank===1?'top-rank':''}`}>{p.rank}</span></td><td><button className="player-cell player-link" aria-label={`${p.name} 통계`} onClick={()=>showPlayer(p.id)}><Avatar player={p}/><strong>{p.name}</strong></button></td><td>{p.played}<span className="unit">판</span></td><td className="best-score">{p.best}<span className="unit">점</span></td><td>{p.average}<span className="unit">점</span></td><td>{p.averageRank}<span className="unit">등</span></td><td><div className="rank-counts">{Object.entries(p.rankCounts).map(([rank,count])=><span key={rank}><span>{rank}등</span><strong>{count}</strong></span>)}</div></td></tr>)}</tbody></table></div>
       {!rows.length&&<Empty label="플레이 기록이 없습니다." action="플레이 기록" onClick={record}/>}
 </>}

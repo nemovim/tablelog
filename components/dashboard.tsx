@@ -1,11 +1,12 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Clock3, Dices, ExternalLink, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import type { Data, Game, Mode, Outcome, Play, Player } from '@/lib/types';
-import { catalog, demoData } from '@/lib/seed';
-import { leaderboard, localDate, playerName, placements, timeStats, formatDuration, cooperativePlayers, outcomeLabels } from '@/lib/stats';
+import { catalog, demoData, normalizeCatalogNames } from '@/lib/seed';
+import { newestPlays, leaderboard, localDate, playerName, placements, timeStats, formatDuration, cooperativePlayers, outcomeLabels } from '@/lib/stats';
 import { gameSchema, playSchema, playerSchema, validatePlayForGame } from '@/lib/validation';
 import GameArt from './game-art';
+import ParticipantPicker from './participant-picker';
 import PlayerStats from './player-stats';
 import { BoardMobileStats } from './mobile-stats';
 import TimerPanel from './timer-panel';
@@ -17,7 +18,7 @@ function Avatar({player,size=''}:{player?:Player;size?:string}) {return <span cl
 export function Modal({title,subtitle,onClose,children}:{title:string;subtitle?:string;onClose:()=>void;children:React.ReactNode}) {
  const ref=useRef<HTMLDivElement>(null);
  useEffect(()=>{const prev=document.activeElement as HTMLElement; const old=document.body.style.overflow;document.body.style.overflow='hidden';ref.current?.focus();return()=>{document.body.style.overflow=old;prev?.focus();};},[]);
- return <div className="modal-backdrop" onClick={e=>{if(e.target===e.currentTarget)onClose();}}><div className="modal" ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} onKeyDown={e=>{if(e.key==='Escape')onClose();if(e.key==='Tab'){const els=ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input,select,textarea,a[href]');if(!els?.length)return;const first=els[0],last=els[els.length-1];if(e.shiftKey&&(document.activeElement===first||document.activeElement===ref.current)){e.preventDefault();last.focus();}else if(!e.shiftKey&&(document.activeElement===last||document.activeElement===ref.current)){e.preventDefault();first.focus();}}}}><div className="modal-heading"><div><h2>{title}</h2>{subtitle&&<p>{subtitle}</p>}</div><button className="icon-button" aria-label="닫기" onClick={onClose}><X size={21}/></button></div>{children}</div></div>;
+ return <div className="modal-backdrop" onClick={e=>{if(e.target===e.currentTarget)onClose();}}><div className="modal" ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} onKeyDown={e=>{if(e.nativeEvent.isComposing)return;if(e.key==='Escape')onClose();if(e.key==='Tab'){const els=ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input,select,textarea,a[href]');if(!els?.length)return;const first=els[0],last=els[els.length-1];if(e.shiftKey&&(document.activeElement===first||document.activeElement===ref.current)){e.preventDefault();last.focus();}else if(!e.shiftKey&&(document.activeElement===last||document.activeElement===ref.current)){e.preventDefault();first.focus();}}}}><div className="modal-heading"><div><h2>{title}</h2>{subtitle&&<p>{subtitle}</p>}</div><button className="icon-button" aria-label="닫기" onClick={onClose}><X size={21}/></button></div>{children}</div></div>;
 }
 export default function Dashboard() {
  const [data,setData]=useState<Data>(empty),[mode,setMode]=useState<Mode>('loading');
@@ -27,12 +28,12 @@ export default function Dashboard() {
  const [selectedId,setSelectedId]=useState(''),[query,setQuery]=useState('');
  const [modal,setModal]=useState<'play'|'game'|'player'|null>(null),[editing,setEditing]=useState<Play|null>(null);
  const [notice,setNotice]=useState(''),[error,setError]=useState(''),[deleting,setDeleting]=useState<Play|null>(null),[busy,setBusy]=useState(false);
-  async function refresh() {try {const r=await fetch('/api/data',{cache:'no-store'}); const result=await r.json();if(!r.ok)throw Error(result.error);if(result.mode==='demo'){const saved=localStorage.getItem(storageKey);let value=demoData();if(saved){try {const parsed=JSON.parse(saved);if(Array.isArray(parsed.games)&&Array.isArray(parsed.players)&&Array.isArray(parsed.plays)&&parsed.games.every((g:unknown)=>gameSchema.safeParse(g).success)&&parsed.players.every((p:unknown)=>playerSchema.safeParse(p).success)&&parsed.plays.every((p:unknown)=>playSchema.safeParse(p).success))value={...parsed,games:[...catalog.slice(0,3).filter(g=>!parsed.games.some((x:Game)=>x.id===g.id||x.bggId===g.bggId)),...parsed.games]};}catch{}}setData(value);setMode('demo');}else{setData(result.data);setMode('mongo');}setError('');}catch(e){setError((e as Error).message);setMode('error');}}
+  async function refresh() {try {const r=await fetch('/api/data',{cache:'no-store'}); const result=await r.json();if(!r.ok)throw Error(result.error);if(result.mode==='demo'){const saved=localStorage.getItem(storageKey);let value=demoData();if(saved){try {const parsed=JSON.parse(saved);if(Array.isArray(parsed.games)&&Array.isArray(parsed.players)&&Array.isArray(parsed.plays)&&parsed.games.every((g:unknown)=>gameSchema.safeParse(g).success)&&parsed.players.every((p:unknown)=>playerSchema.safeParse(p).success)&&parsed.plays.every((p:unknown)=>playSchema.safeParse(p).success))value={...parsed,games:[...catalog.slice(0,3).filter(g=>!parsed.games.some((x:Game)=>x.id===g.id||x.bggId===g.bggId)),...parsed.games]};}catch{}}setData(normalizeCatalogNames(value));setMode('demo');}else{setData(normalizeCatalogNames(result.data));setMode('mongo');}setError('');}catch(e){setError((e as Error).message);setMode('error');}}
  useEffect(()=>{void refresh();},[]);
  useEffect(()=>{window.scrollTo({top:0,behavior:'auto'});},[view,playerId]);
  useEffect(()=>{if(!notice)return;const id=setTimeout(()=>setNotice(''),4000);return()=>clearTimeout(id);},[notice]);
  async function save(collection:keyof Data,record:Game|Player|Play,action='create') {
-  let saved=record;
+  let saved=collection==='plays'&&action==='create'?{...record,createdAt:new Date().toISOString()}:record;
   if(mode==='mongo'){const r=await fetch(`/api/records/${collection}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({record,action})});const result=await r.json();if(!r.ok)throw Error(result.error);saved=result.record;await refresh();}
   else if(mode==='demo'){if(action==='create'&&data[collection].some(r=>r.id===saved.id))throw Error('이미 저장된 기록입니다. 새로고침해 주세요.');if(action==='update'&&'version' in saved)saved={...saved,version:saved.version+1};const next={...data,[collection]:action==='update'?data[collection].map(r=>r.id===saved.id?saved:r):[...data[collection],saved]};localStorage.setItem(storageKey,JSON.stringify(next));setData(next as Data);}
   else throw Error('데이터 연결을 먼저 확인해 주세요.');
@@ -41,11 +42,11 @@ export default function Dashboard() {
  async function removePlay(){if(!deleting)return;setBusy(true);try {if(mode==='mongo'){const r=await fetch('/api/records/plays',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id:deleting.id,version:deleting.version})});const result=await r.json();if(!r.ok)throw Error(result.error);await refresh();}else{const next={...data,plays:data.plays.filter(p=>p.id!==deleting.id)};localStorage.setItem(storageKey,JSON.stringify(next));setData(next);}setDeleting(null);setNotice('기록을 삭제했습니다.');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
 
  const game=data.games.find(g=>g.id===selectedId)||data.games[0];
- const rows=game?leaderboard(data,game.id):[];
+ const rows=useMemo(()=>view==='games'&&game?.scoring!=='coop'&&game?leaderboard(data,game.id):[],[data,game,view]);
  const coop=game?.scoring==='coop';
- const team=game?cooperativePlayers(data,game.id):[];
- const plays=data.plays.filter(p=>p.gameId===game?.id).sort((a,b)=>b.date.localeCompare(a.date));
- const timing=timeStats(plays);
+ const team=useMemo(()=>view==='games'&&game?.scoring==='coop'?cooperativePlayers(data,game.id):[],[data,game,view]);
+ const plays=useMemo(()=>newestPlays(data.plays.filter(p=>p.gameId===game?.id)),[data.plays,game?.id]);
+ const timing=useMemo(()=>timeStats(plays),[plays]);
  const visibleGames=data.games.filter(g=>`${g.name} ${g.english}`.toLowerCase().replace(/\s/g,'').includes(query.toLowerCase().replace(/\s/g,'')));
  function showPlayer(id:string){setPlayerId(id);setView('players');}
  const navigation=(<div className="page-heading"><h1 className="sr-only">{view==='games'?'스코어보드':'플레이어 통계'}</h1><nav className="view-tabs" aria-label="통계 보기"><button className={view==='games'?'selected':''} aria-pressed={view==='games'} onClick={()=>setView('games')}>스코어보드</button><button className={view==='players'?'selected':''} aria-pressed={view==='players'} onClick={()=>setView('players')}>플레이어 통계</button></nav></div>);
@@ -71,7 +72,7 @@ export default function Dashboard() {
       <div className="board-footnote">{coop?'이름순 · 실패·중단·재도전도 각각 한 판으로 기록합니다.':'순위는 개인 최고 점수 기준 · 평균 등수와 등수별 판수는 매 판의 결과 기준'} 시간은 입력한 기록만 합산합니다.</div>
      </section>
      <section className="history"><div className="section-heading"><h2>플레이 기록 <span>{plays.length}</span></h2><span>{coop?'시나리오 · 결과 · 시간':'날짜 · 점수 · 시간'}</span></div>
-      {plays.length?<div className="play-list">{plays.map(play=><article className="play-row" key={play.id}><div className="play-meta"><time dateTime={play.date}>{play.date.replaceAll('-','. ')}</time><span><Clock3 size={11}/>{formatDuration(play.duration)}</span></div><div className="play-content">{coop?<><div className="scenario-result"><strong>{play.scenario?`시나리오 · ${play.scenario}`:'시나리오 미기록'}</strong>{play.outcome?<span className={`outcome ${play.outcome}`}>{outcomeLabels[play.outcome]}</span>:<span className="outcome">결과 미기록</span>}</div><div className="team-names">{play.scores.map(p=>playerName(data.players,p.playerId)).join(' · ')}</div></>:<div className="play-results">{placements(play,game).map(s=><span className="play-result" key={s.playerId}><span className={s.rank===1?'first-place':''}>{s.rank}등</span><strong>{playerName(data.players,s.playerId)}</strong><span>{s.score}<small>점</small></span></span>)}</div>}</div><div className="row-actions"><button className="icon-button" aria-label={`${game.name} ${play.date} 기록 수정`} onClick={()=>{setTimerDraft(null);setEditing(play);setModal('play');}}><Pencil size={15}/></button><button className="icon-button" aria-label={`${game.name} ${play.date} 기록 삭제`} onClick={()=>{setError('');setDeleting(play);}}><Trash2 size={15}/></button></div></article>)}</div>:<p className="empty-inline">플레이 기록이 없습니다.</p>}
+      {plays.length?<div className="play-list">{plays.map(play=><article className="play-row" key={play.id}><div className="play-meta"><time dateTime={play.date}>{play.date.replaceAll('-','. ')}</time><span><Clock3 size={11}/>{formatDuration(play.duration)}</span></div><div className="play-content">{coop?<><div className="scenario-result"><strong>{play.scenario?`시나리오 · ${play.scenario}`:'시나리오 미기록'}</strong>{play.outcome?<span className={`outcome ${play.outcome}`}>{outcomeLabels[play.outcome]}</span>:<span className="outcome">결과 미기록</span>}</div><div className="team-names">{play.scores.map(p=>playerName(data.players,p.playerId)).join(' · ')}</div></>:<div className="play-results">{placements(play,game).map(s=><span className="play-result" key={s.playerId}><span className={s.rank===1?'first-place':''}>{s.rank}등</span><strong>{playerName(data.players,s.playerId)}</strong><span>{s.score}<small>점</small></span></span>)}</div>}{play.note&&<p className="play-note">{play.note}</p>}</div><div className="row-actions"><button className="icon-button" aria-label={`${game.name} ${play.date} 기록 수정`} onClick={()=>{setTimerDraft(null);setEditing(play);setModal('play');}}><Pencil size={15}/></button><button className="icon-button" aria-label={`${game.name} ${play.date} 기록 삭제`} onClick={()=>{setError('');setDeleting(play);}}><Trash2 size={15}/></button></div></article>)}</div>:<p className="empty-inline">플레이 기록이 없습니다.</p>}
      </section>
      {game.bggId&&<a className="bgg-link" href={`https://boardgamegeek.com/boardgame/${game.bggId}`} target="_blank" rel="noreferrer">BoardGameGeek <ExternalLink size={12}/></a>}
     </>}
@@ -92,16 +93,19 @@ function PlayModal({data,draft,editing,defaultGameId,onClose,onSave,onAddGame,on
  const [date,setDate]=useState(editing?.date||draft?.date||localDate());
  const [duration,setDuration]=useState(editing?.duration===undefined?(draft?String(timerMinutes(draft)):''):String(editing.duration));
  const [scenario,setScenario]=useState(editing?.scenario||'');
+ const noteRef=useRef<HTMLTextAreaElement>(null);
  const [outcome,setOutcome]=useState<Outcome|''>(editing?.outcome||'');
- const [scores,setScores]=useState<{playerId:string;score:string}[]>(editing?.scores.map(s=>({playerId:s.playerId,score:s.score===undefined?'':String(s.score)}))||(draft?draft.playerIds.map(id=>({playerId:id,score:''})):data.players.slice(0,4).map(p=>({playerId:p.id,score:''}))));
+ const [scores,setScores]=useState<{playerId:string;score:string}[]>(editing?.scores.map(s=>({playerId:s.playerId,score:s.score===undefined?'':String(s.score)}))||(draft?draft.playerIds.map(id=>({playerId:id,score:''})):[]));
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
  const game=data.games.find(g=>g.id===gameId),coop=game?.scoring==='coop';
  async function submit(e:React.FormEvent){
   e.preventDefault();setError('');
   if(!game)return;
+  if(!scores.length){setError('참가자를 한 명 이상 선택해 주세요.');return;}
   if(!coop&&scores.some(s=>s.score.trim()==='')){setError('모든 참가자의 점수를 입력해 주세요.');return;}
   const play:Play={...editing,id:editing?.id||draft?.id||crypto.randomUUID(),gameId,date,
    duration:duration.trim()?Number(duration):undefined,
+   note:noteRef.current?.value.trim()||undefined,
    scenario:coop&&scenario.trim()?scenario.trim():undefined,
    outcome:coop&&outcome?outcome:undefined,
    scores:scores.map(s=>coop?{playerId:s.playerId}:{playerId:s.playerId,score:Number(s.score)}),version:editing?.version||1};
@@ -116,9 +120,10 @@ function PlayModal({data,draft,editing,defaultGameId,onClose,onSave,onAddGame,on
    <label className="field">플레이한 게임<select disabled={!!draft} value={gameId} onChange={e=>setGame(e.target.value)}>{data.games.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></label>
    <div className="form-row"><label className="field">플레이 날짜<input type="date" required value={date} onChange={e=>setDate(e.target.value)}/></label><label className="field">플레이 시간 (분)<input type="number" step="1" min="1" max="10000" placeholder="선택 · 예: 90" value={duration} onChange={e=>setDuration(e.target.value)}/></label></div>
    {coop&&<div className="cooperative-fields"><label className="field">시나리오 <span className="field-hint">선택</span><input maxLength={100} value={scenario} onChange={e=>setScenario(e.target.value)} placeholder="번호 또는 이름 · 예: 3"/></label><label className="field">결과<select value={outcome} onChange={e=>setOutcome(e.target.value as Outcome|'')}><option value="">미기록</option><option value="cleared">성공</option><option value="failed">실패</option><option value="paused">중단</option></select></label></div>}
-   <div className="scores-heading"><strong>{coop?'참가자':'참가자와 점수'}</strong><span>{coop?'함께한 사람만 선택해 주세요':`${game?.scoring==='low'?'낮은':'높은'} 점수가 우승해요`}</span></div>
-   <div className="score-rows">{scores.map((score,i)=><div className="score-row" key={score.playerId}><Avatar player={data.players.find(p=>p.id===score.playerId)}/><strong>{playerName(data.players,score.playerId)}</strong>{!coop&&<><input aria-label={`${playerName(data.players,score.playerId)} 점수`} type="number" step="any" required placeholder="0" min="-1000000" max="1000000" value={score.score} onChange={e=>setScores(scores.map((s,j)=>j===i?{...s,score:e.target.value}:s))}/><span>점</span></>}<button type="button" className="icon-button" aria-label={`${playerName(data.players,score.playerId)} 제외`} onClick={()=>setScores(scores.filter((_,j)=>j!==i))}><X size={16}/></button></div>)}</div>
-   {data.players.some(p=>!scores.some(s=>s.playerId===p.id))&&<select aria-label="참가자 추가" className="add-participant" value="" onChange={e=>{if(e.target.value)setScores([...scores,{playerId:e.target.value,score:''}]);}}><option value="">+ 참가자 추가</option>{data.players.filter(p=>!scores.some(s=>s.playerId===p.id)).map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select>}
+   {game?.bggId===3955&&!coop&&<p className="search-message">뱅은 승패형 게임입니다. 현재 점수 기록에서는 승리 1점 · 패배 0점으로 입력해 주세요.</p>}
+   <ParticipantPicker players={data.players} selected={scores.map(s=>s.playerId)} disabled={busy} onToggle={id=>setScores(current=>current.some(s=>s.playerId===id)?current.filter(s=>s.playerId!==id):[...current,{playerId:id,score:''}])}/>
+   {!coop&&scores.length>0&&<><div className="scores-heading"><strong>점수</strong><span>{game?.scoring==='low'?'낮은':'높은'} 점수가 우승해요</span></div><div className="score-rows">{scores.map((score,i)=><div className="score-row" key={score.playerId}><Avatar player={data.players.find(p=>p.id===score.playerId)}/><strong>{playerName(data.players,score.playerId)}</strong><input aria-label={`${playerName(data.players,score.playerId)} 점수`} type="number" step="any" required placeholder="0" min="-1000000" max="1000000" value={score.score} onChange={e=>setScores(scores.map((s,j)=>j===i?{...s,score:e.target.value}:s))}/><span>점</span></div>)}</div></>}
+   <label className="field note-field">메모 <span className="field-hint">선택</span><textarea rows={3} maxLength={1000} ref={noteRef} defaultValue={editing?.note||''} placeholder="특이사항이나 기억할 내용을 자유롭게 남겨 주세요."/></label>
    <p className="search-message">시간은 실제 플레이한 분으로 기록해 주세요. 비워 두면 시간 통계에서 제외됩니다.{coop?' 재도전은 새 기록으로 남기면 됩니다.':''}</p>
    {error&&<p className="form-error" role="alert">{error}</p>}
    <div className="modal-actions"><button type="button" className="secondary" disabled={busy} onClick={onClose}>취소</button><button className="primary" disabled={busy||!scores.length}>{busy?<Loader2 className="spin" size={17}/>:<Check size={17}/>} {busy?'저장 중…':'기록 저장하기'}</button></div>

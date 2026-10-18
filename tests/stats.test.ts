@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leaderboard, placements } from '../lib/stats';
+import { leaderboard, placements, newestPlays, playerStats } from '../lib/stats';
 import { playSchema } from '../lib/validation';
 import type { Data, Game, Play } from '../lib/types';
 const game:Game={id:'g',name:'test',english:'Test',color:'#ffffff',motif:'hex',scoring:'high'};
@@ -14,3 +14,16 @@ test('no records and unknown games produce empty statistics',()=>{assert.deepEqu
 test('minimal records and legacy records both validate',()=>{assert.equal(playSchema.safeParse(play).success,true);const legacy={...play,duration:60,note:'previous note'};assert.deepEqual(playSchema.parse(legacy),legacy);});
 test('invalid date, duplicate players and nonfinite scores are rejected',()=>{assert.equal(playSchema.safeParse({...play,date:'2026-02-30'}).success,false);assert.equal(playSchema.safeParse({...play,scores:[play.scores[0],play.scores[0]]}).success,false);assert.equal(playSchema.safeParse({...play,scores:[{playerId:'a',score:Infinity}]}).success,false);assert.equal(playSchema.safeParse({...play,scores:[]}).success,false);});
 test('zero and negative scores are ranked correctly',()=>{const signed={...play,scores:[{playerId:'a',score:0},{playerId:'b',score:-5}]};assert.equal(playSchema.safeParse(signed).success,true);assert.deepEqual(placements(signed,game).map(s=>s.playerId),['a','b']);assert.equal(leaderboard({...data,plays:[signed]},'g').find(p=>p.id==='b')?.best,-5);});
+
+test('history orders dates before creation timestamps in both views',()=>{
+ const input=[{...play,id:'old',createdAt:'2026-10-02T08:00:00.000Z',version:9},{...play,id:'new',createdAt:'2026-10-02T09:00:00.000Z'},{...play,id:'earlier',date:'2026-09-30',createdAt:'2026-10-03T09:00:00.000Z'}];
+ assert.deepEqual(newestPlays(input).map(p=>p.id),['new','old','earlier']);
+ assert.deepEqual(playerStats({...data,plays:input},'a')?.plays.map(p=>p.id),['new','old','earlier']);
+ assert.deepEqual(input.map(p=>p.id),['old','new','earlier']);
+});
+test('legacy records fall back to reverse input order and timestamps validate',()=>{
+ const input=[{...play,id:'legacy1'},{...play,id:'legacy2'},{...play,id:'new',createdAt:'2026-10-02T09:00:00.000Z'}];
+ assert.deepEqual(newestPlays(input).map(p=>p.id),['new','legacy2','legacy1']);
+ assert.equal(playSchema.parse(input[2]).createdAt,input[2].createdAt);
+ assert.equal(playSchema.safeParse({...play,createdAt:'invalid'}).success,false);
+});

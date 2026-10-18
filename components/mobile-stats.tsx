@@ -21,10 +21,12 @@ export function BoardMobileStats({rows,team,coop,onPlayer}:{rows:ReturnType<type
 }
 export function PlayerGameCards({games,onGame}:{games:NonNullable<ReturnType<typeof playerStats>>['games'];onGame:(id:string)=>void}) {
  return <div className="mobile-stat-cards personal-cards" aria-label="게임별 통계 카드">{games.map(row=><article className="mobile-stat-card" key={row.game.id}>
-  <div className="card-heading"><button className="card-game" onClick={()=>onGame(row.game.id)}><strong>{row.game.name}</strong><ChevronRight size={16}/></button><span className="card-played">{row.played}판</span></div>
-  <p className="card-game-rule">{row.score?`스코어보드 ${row.score.rank}위 · ${row.game.scoring==='low'?'낮은':'높은'} 점수순`:'협력형 · 점수 없이 기록'}</p>
-  {row.score&&<><dl className="card-metrics"><Metric label="최고 점수" value={row.score.best} unit="점" accent/><Metric label="평균 점수" value={row.score.average} unit="점"/><Metric label="평균 등수" value={row.score.averageRank} unit="등"/></dl><RankCounts counts={row.score.rankCounts}/></>}
-  <dl className="card-metrics two card-time"><Metric label="누적 시간" value={row.recorded?formatDuration(row.total):'미기록'}/><Metric label="평균 시간" value={formatDuration(row.average)}/></dl>
-  <p className="card-time-note">시간 입력 {row.recorded}/{row.played}판</p>
+  <div className="personal-game-heading"><div className="card-heading"><button className="card-game" onClick={()=>onGame(row.game.id)}><strong>{row.game.name}</strong><ChevronRight size={16}/></button><span className="card-played">{row.played}판</span></div>
+  <p className="card-game-rule">{row.score?`스코어보드 ${row.score.rank}위 · ${row.game.scoring==='low'?'낮은':'높은'} 점수순`:'협력형 · 점수 없이 기록'}</p></div>
+  {row.score&&<div className="personal-score-section"><dl className="card-metrics"><Metric label="최고 점수" value={row.score.best} unit="점" accent/><Metric label="평균 점수" value={row.score.average} unit="점"/><Metric label="평균 등수" value={row.score.averageRank} unit="등"/></dl><RankCounts counts={row.score.rankCounts}/></div>}
+  <div className={row.score?'personal-time-section separated':'personal-time-section'}>
+   <dl className="card-metrics two card-time"><Metric label="누적 시간" value={row.recorded?formatDuration(row.total):'미기록'}/><Metric label="평균 시간" value={formatDuration(row.average)}/></dl>
+   <p className="card-time-note">시간 입력 {row.recorded}/{row.played}판</p>
+  </div>
  </article>)}</div>;
 }

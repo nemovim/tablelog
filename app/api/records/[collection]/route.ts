@@ -19,7 +19,7 @@ export async function POST(request: NextRequest, {params}:{params:Promise<{colle
   const schema=collection==='games'?gameSchema:collection==='players'?playerSchema:playSchema;
   const parsed=schema.safeParse(body.record);
   if(!parsed.success) return NextResponse.json({error:'입력값을 확인해 주세요.',details:parsed.error.flatten()},{status:400});
-  const record=parsed.data;
+  const record=collection==='plays'&&body.action==='create'?{...parsed.data,createdAt:new Date().toISOString()}:parsed.data;
   if(collection==='plays') {
    const play=playSchema.parse(record);
    const [game,playerCount]=await Promise.all([database.collection('games').findOne({id:play.gameId}),database.collection('players').countDocuments({id:{$in:play.scores.map(s=>s.playerId)}})]);
@@ -33,6 +33,9 @@ export async function POST(request: NextRequest, {params}:{params:Promise<{colle
     if(!timer||timer.gameId!==play.gameId)return NextResponse.json({error:'타이머가 변경되었거나 이미 저장되었습니다. 새로고침해 주세요.'},{status:409});
    }
    if(body.action==='update') {
+    const existing=await store.findOne({_id:play.id,version:play.version} as never);
+    delete play.createdAt;
+    if(typeof existing?.createdAt==='string')play.createdAt=existing.createdAt;
     const result=await store.replaceOne({_id:play.id,version:play.version} as never,{...play,_id:play.id,version:play.version+1} as never);
     if(!result.matchedCount) return NextResponse.json({error:'다른 사람이 수정한 기록입니다. 새로고침 후 다시 시도해 주세요.'},{status:409});
     return NextResponse.json({record:{...play,version:play.version+1}});

@@ -1,5 +1,11 @@
 import type { Data, Game, Play, Player } from './types';
 
+export function newestPlays(plays: Play[]) {
+ return plays.map((play,index)=>({play,index})).sort((a,b)=>
+  b.play.date.localeCompare(a.play.date) ||
+  (Date.parse(b.play.createdAt || '') || 0)-(Date.parse(a.play.createdAt || '') || 0) || b.index-a.index
+ ).map(({play})=>play);
+}
 // Competition ranking: equal scores share a place (1, 1, 3).
 export function placements(play: Play, game: Game) {
  if(game.scoring==='coop') return [];
@@ -57,7 +63,7 @@ export const outcomeLabels = {cleared:'성공',failed:'실패',paused:'중단'};
 export function playerStats(data: Data, playerId: string) {
  const player=data.players.find(p=>p.id===playerId);
  if(!player) return null;
- const plays=data.plays.filter(p=>p.scores.some(s=>s.playerId===playerId)).sort((a,b)=>b.date.localeCompare(a.date));
+ const plays=newestPlays(data.plays.filter(p=>p.scores.some(s=>s.playerId===playerId)));
  const games=data.games.flatMap(game=>{
   const mine=plays.filter(p=>p.gameId===game.id);
   if(!mine.length) return [];
